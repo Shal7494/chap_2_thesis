@@ -913,18 +913,9 @@ for (i in seq_along(seed_list)) {
 ```
 
 
+# Mating function
 
 
-Working for mating function 
-
-We will use 
-
-If we were to have 6 years of reproduction and have 1500 offspring born each season with a survival rate of 0.8, we will have 9520 animals created in the simulation and 7616 animals surviving by the end of the simulation.
-
-
-
-
-Mating function
 ```{r}
 
 
@@ -1624,7 +1615,7 @@ for (i in 1:20) {
 ```
 
 
-# Simulation result demographics 
+# Simulation result demographics and plots
 
 Body Weights
 ```{r}
