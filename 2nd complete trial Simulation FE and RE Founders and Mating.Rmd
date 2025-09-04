@@ -1,0 +1,2140 @@
+---
+title: "Simulation 2"
+author: "Shalini Abeykoon"
+date: "2025-03-07"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, eval = FALSE}
+# Packages
+packageList = c("ggplot2",
+                "gridExtra",
+                "data.table",
+                "MASS",
+                "reshape2",
+                "plyr",
+                "Runuran",
+                "corpcor",
+                "gdata", 
+                "MatchIt",
+                "lme4",
+                "merTools",
+                "nlme",
+                "ape",
+                "dplyr",
+                "corrplot",
+                "grid"
+                )
+# install.packages(c(packageList)) #don't uncode unless you want to install 
+# packages, also hope you miss me cause I am saving you soo much work installing 
+# packages...Nic
+lapply(packageList, require, character.only = TRUE)
+```
+
+# Custom Functions
+```{r}
+# Random number generator 
+rnormBound <- function(n, mu, sigma){
+  Runuran::urnorm(n, mean = mu, sd = sigma, lb = (mu - 3 * sigma), ub = (mu + 3 * sigma))
+}
+```
+
+# Founders
+```{r}
+# For replicates
+#set.seed(48)
+#seeds <- sample(1:1000000000, 50, replace = FALSE)  
+#print(seeds)
+set.seed(48)
+```
+
+```{r}
+init_yob <- 2018
+final_yob <- 2023
+
+
+traitNames <- c("bw", "fi", "ch4", "co2", "ych4", "yco2")
+
+
+# narrow sense heritability
+h2_BW <- 0.43
+h2_FI <- 0.35
+h2_ch4 <- 0.32
+h2_co2 <- 0.32
+h2_ych4 <- 0.13
+h2_yco2 <- 0.13
+
+h2 <- c(h2_BW, h2_FI, h2_ch4, h2_co2, h2_ych4, h2_yco2)
+
+
+
+
+
+
+
+
+# Correlation of variables
+# Phenotype, environmental (dlt), and genetic (dlt) covariance matrices respectively
+            #BW
+p.cor <- c(0.70, #FI 
+           0.52, 0.36, #CH4
+           0.45, 0.45, 0.62, #CO2
+           0.00, 0.00, 0.00, 0.00, #yCH4
+           0.00, 0.00, 0.00, 0.00, 0.50 #yCO2
+           )
+
+p.Mean <- c(57.6, 0.98, 17.2, 1248, 18.6, 1273)
+p.sd <- c(8.6, 0.32, 3.51, 235, 4.92, 250)
+p.Variance <- p.sd^2
+
+
+            #BW
+g.cor <- c(0.60, #FI
+           0.54, 0.00, #CH4
+           0.80, 0.00, 0.65, #CO2
+           0.00, 0.00, 0.00, 0.00, #yCH4
+           0.00, 0.00, 0.00, 0.00, 0.70 #yCO2
+           )
+
+g.Mean <- p.Mean 
+g.Variance <- p.Variance * h2
+
+# Correlation matrix
+g.rho <- diag(length(traitNames))
+g.rho[upper.tri(g.rho)] <- g.cor
+low.tri <- lower.tri(g.rho)
+g.rho[low.tri] <- t(g.rho)[low.tri]
+# Make correlation matrix positive definite.
+g.rho <- corpcor::make.positive.definite(g.rho)
+# Covariance matrix of correlated traits.
+g.sigma <- sqrt(g.Variance %*% t(g.Variance)) * g.rho
+g.sigma <- corpcor::make.positive.definite(g.sigma)
+g.cov_matrix <- as.matrix(g.sigma)
+
+
+
+
+
+# the e.cor correlation matrix is calculated using h2, g.cor, and p.cor
+e.cor <- numeric(length(p.cor)) 
+idx <- 1
+for (i in 2:length(traitNames)) {
+  for (j in 1:(i - 1)) {
+    h_i <- (h2[i])
+    h_j <- (h2[j])
+    
+    # e.cor equation (working in notebook and Peter's email)
+    denom <- sqrt((1 - h2[i])) * sqrt((1 - h2[j]))
+    e.cor[idx] <- (p.cor[idx] - sqrt(h_i) * sqrt(h_j) * g.cor[idx]) / denom
+    idx <- idx + 1
+  }
+}
+
+
+e.Mean <- c(0, 0, 0, 0, 0, 0)
+e.sd <- sqrt(p.Variance * (1 - h2))
+e.Variance <- e.sd^2
+
+# Correlation matrix
+e.rho <- diag(length(traitNames))
+e.rho[upper.tri(e.rho)] <- e.cor
+low.tri <- lower.tri(e.rho)
+e.rho[low.tri] <- t(e.rho)[low.tri]
+# Make correlation matrix positive definite.
+e.rho <- corpcor::make.positive.definite(e.rho)
+# Covariance matrix of correlated traits.
+e.sigma <- sqrt(e.Variance %*% t(e.Variance)) * e.rho
+e.sigma <- corpcor::make.positive.definite(e.sigma)
+e.cov_matrix <- as.matrix(e.sigma)
+```
+
+```{r}
+# Effects
+# body weight
+
+bw_sex_eft_f <- -1.5
+bw_sex_eft_m  <- 1.5
+
+bw_yob_eft_2015 <- -1.29
+bw_yob_eft_2016 <- 1.33
+bw_yob_eft_2017 <- -0.77
+bw_yob_eft_2018 <- -0.18
+bw_yob_eft_2019 <- 0.48
+bw_yob_eft_2020 <- 0.07
+bw_yob_eft_2021 <- 2.41
+bw_yob_eft_2022 <- -0.75
+bw_yob_eft_2023 <- -1.02
+
+bw_dp_eft_1 <- -2
+bw_dp_eft_2 <- 0
+
+bw_ls_eft_1 <- 0
+bw_ls_eft_2 <- -3
+bw_ls_eft_3 <- -4.5
+bw_ls_eft_4 <- -5
+
+
+
+
+# FI
+
+FI_sex_eft_f <- -0.025
+FI_sex_eft_m  <- 0.025
+
+FI_yob_eft_2015 <- -0.03
+FI_yob_eft_2016 <- 0.033
+FI_yob_eft_2017 <- -0.077
+FI_yob_eft_2018 <- -0.018
+FI_yob_eft_2019 <- 0.048
+FI_yob_eft_2020 <- 0.007
+FI_yob_eft_2021 <- 0.001
+FI_yob_eft_2022 <- -0.079
+FI_yob_eft_2023 <- -0.092
+
+FI_dp_eft_1 <- -0.012
+FI_dp_eft_2 <- 0.020
+
+FI_ls_eft_1 <- 0.15
+FI_ls_eft_2 <- 0
+FI_ls_eft_3 <- -0.1
+FI_ls_eft_4 <- -0.15
+
+
+
+
+# ch4
+
+ch4_sex_eft_f <- -0.25
+ch4_sex_eft_m  <- 0.25
+
+ch4_yob_eft_2015 <- -1.29
+ch4_yob_eft_2016 <- 1.33
+ch4_yob_eft_2017 <- -0.77
+ch4_yob_eft_2018 <- -0.18
+ch4_yob_eft_2019 <- 0.48
+ch4_yob_eft_2020 <- 0.07
+ch4_yob_eft_2021 <- 2.41
+ch4_yob_eft_2022 <- -0.75
+ch4_yob_eft_2023 <- -1.02
+
+ch4_dp_eft_1 <- -0.12
+ch4_dp_eft_2 <- 0.20
+
+ch4_ls_eft_1 <- 2.4
+ch4_ls_eft_2 <- -1.2
+ch4_ls_eft_3 <- -1.3
+ch4_ls_eft_4 <- -1.3
+
+
+
+
+
+# co2
+
+co2_sex_eft_f <- -1.5
+co2_sex_eft_m  <- 1.5
+
+co2_yob_eft_2015 <- -1.29
+co2_yob_eft_2016 <- 1.33
+co2_yob_eft_2017 <- -0.77
+co2_yob_eft_2018 <- -0.18
+co2_yob_eft_2019 <- 0.48
+co2_yob_eft_2020 <- 0.07
+co2_yob_eft_2021 <- 2.41
+co2_yob_eft_2022 <- -0.75
+co2_yob_eft_2023 <- -1.02
+
+co2_dp_eft_1 <- -2
+co2_dp_eft_2 <- 2
+
+co2_ls_eft_1 <- 2.4
+co2_ls_eft_2 <- -1.2
+co2_ls_eft_3 <- -1.3
+co2_ls_eft_4 <- -1.3
+
+
+
+
+
+# ych4
+
+ych4_sex_eft_f <- 0
+ych4_sex_eft_m  <- 0
+
+ych4_yob_eft_2015 <- -0.29
+ych4_yob_eft_2016 <- 0.33
+ych4_yob_eft_2017 <- -0.77
+ych4_yob_eft_2018 <- -0.18
+ych4_yob_eft_2019 <- 0.48
+ych4_yob_eft_2020 <- 0.07
+ych4_yob_eft_2021 <- 0.41
+ych4_yob_eft_2022 <- -0.75
+ych4_yob_eft_2023 <- -1.02
+
+ych4_dp_eft_1 <- 0
+ych4_dp_eft_2 <- 0
+
+ych4_ls_eft_1 <- 0
+ych4_ls_eft_2 <- 0
+ych4_ls_eft_3 <- 0
+ych4_ls_eft_4 <- 0
+
+
+
+
+
+# yco2
+
+yco2_sex_eft_f <- -1.5
+yco2_sex_eft_m  <- 1.5
+
+yco2_yob_eft_2015 <- -1.29
+yco2_yob_eft_2016 <- 1.33
+yco2_yob_eft_2017 <- -0.77
+yco2_yob_eft_2018 <- -0.18
+yco2_yob_eft_2019 <- 0.48
+yco2_yob_eft_2020 <- 0.07
+yco2_yob_eft_2021 <- 2.41
+yco2_yob_eft_2022 <- -0.75
+yco2_yob_eft_2023 <- -1.02
+
+yco2_dp_eft_1 <- -2
+yco2_dp_eft_2 <- 2
+
+yco2_ls_eft_1 <- 2.4
+yco2_ls_eft_2 <- -1.2
+yco2_ls_eft_3 <- -1.3
+yco2_ls_eft_4 <- -1.3
+
+
+
+
+# dam parity uniform distribution sampling
+dp_1 <- 0.30
+dp_2 <- 0.45
+dp_3 <- 0.60
+
+
+
+# litter size uniform distribution sampling
+ls_1 <- 0.25
+ls_2 <- 0.85
+ls_3 <- 1.0
+
+
+
+# founders date of birth parameters (dob)
+f1_dobMean_f <- 288 + 1*365 # spring 2016
+f1_dobMean_m <- 288 + 2*365 # spring 2017
+f1_dobSD <- 15 
+origin_dob <- "2015-01-01"
+```
+
+
+```{r}
+# Founders
+f1_fnum <- 1500
+f1_mnum <- 60
+
+# number of founder generation simulations
+fsim_num <- 20
+```
+
+
+```{r}
+# For mating
+offspring_num <- 2000
+
+surv_rate_f <- 0.8
+surv_rate_m <- 0.7
+
+select_sires_num <- 60
+
+n_gen <- final_yob - init_yob + 1        # number of generations to simulate assuming 1 lambing per year
+```
+
+
+
+```{r}
+set.seed(5)
+
+gen_found_pop <- function(
+    ff1_fnum,
+    ff1_mnum,
+    finit_yob,
+    ffinal_yob,
+    ff1_dobMean_f,
+    ff1_dobMean_m,
+    ff1_dobSD,
+    forigin_dob,
+    fdp_1,
+    fdp_2,
+    fdp_3,
+    fls_1,
+    fls_2,
+    fls_3,
+    fbw_sex_eft_f, 
+    fbw_sex_eft_m,
+    fbw_yob_eft_2015,
+    fbw_yob_eft_2016,
+    fbw_yob_eft_2017,
+    fbw_yob_eft_2018,
+    fbw_yob_eft_2019,
+    fbw_yob_eft_2020,
+    fbw_yob_eft_2021,
+    fbw_yob_eft_2022,
+    fbw_yob_eft_2023, 
+    fbw_dp_eft_1, 
+    fbw_dp_eft_2,
+    fbw_ls_eft_1,
+    fbw_ls_eft_2,
+    fbw_ls_eft_3,
+    fbw_ls_eft_4,
+    fFI_sex_eft_f, 
+    fFI_sex_eft_m,
+    fFI_yob_eft_2015,
+    fFI_yob_eft_2016,
+    fFI_yob_eft_2017,
+    fFI_yob_eft_2018,
+    fFI_yob_eft_2019,
+    fFI_yob_eft_2020,
+    fFI_yob_eft_2021,
+    fFI_yob_eft_2022,
+    fFI_yob_eft_2023,
+    fFI_dp_eft_1, 
+    fFI_dp_eft_2,
+    fFI_ls_eft_1,
+    fFI_ls_eft_2,
+    fFI_ls_eft_3,
+    fFI_ls_eft_4,
+    fch4_sex_eft_f, 
+    fch4_sex_eft_m,
+    fch4_yob_eft_2015,
+    fch4_yob_eft_2016,
+    fch4_yob_eft_2017,
+    fch4_yob_eft_2018,
+    fch4_yob_eft_2019,
+    fch4_yob_eft_2020,
+    fch4_yob_eft_2021,
+    fch4_yob_eft_2022,
+    fch4_yob_eft_2023,
+    fch4_dp_eft_1, 
+    fch4_dp_eft_2,
+    fch4_ls_eft_1,
+    fch4_ls_eft_2,
+    fch4_ls_eft_3,
+    fch4_ls_eft_4,
+    fco2_sex_eft_f, 
+    fco2_sex_eft_m,
+    fco2_yob_eft_2015,
+    fco2_yob_eft_2016,
+    fco2_yob_eft_2017,
+    fco2_yob_eft_2018,
+    fco2_yob_eft_2019,
+    fco2_yob_eft_2020,
+    fco2_yob_eft_2021,
+    fco2_yob_eft_2022,
+    fco2_yob_eft_2023, 
+    fco2_dp_eft_1, 
+    fco2_dp_eft_2,
+    fco2_ls_eft_1,
+    fco2_ls_eft_2,
+    fco2_ls_eft_3,
+    fco2_ls_eft_4,
+    fych4_sex_eft_f, 
+    fych4_sex_eft_m,
+    fych4_yob_eft_2015,
+    fych4_yob_eft_2016,
+    fych4_yob_eft_2017,
+    fych4_yob_eft_2018,
+    fych4_yob_eft_2019,
+    fych4_yob_eft_2020,
+    fych4_yob_eft_2021,
+    fych4_yob_eft_2022,
+    fych4_yob_eft_2023, 
+    fych4_dp_eft_1, 
+    fych4_dp_eft_2,
+    fych4_ls_eft_1,
+    fych4_ls_eft_2,
+    fych4_ls_eft_3,
+    fych4_ls_eft_4,
+    fyco2_sex_eft_f, 
+    fyco2_sex_eft_m,
+    fyco2_yob_eft_2015,
+    fyco2_yob_eft_2016,
+    fyco2_yob_eft_2017,
+    fyco2_yob_eft_2018,
+    fyco2_yob_eft_2019,
+    fyco2_yob_eft_2020,
+    fyco2_yob_eft_2021,
+    fyco2_yob_eft_2022,
+    fyco2_yob_eft_2023, 
+    fyco2_dp_eft_1, 
+    fyco2_dp_eft_2,
+    fyco2_ls_eft_1,
+    fyco2_ls_eft_2,
+    fyco2_ls_eft_3,
+    fyco2_ls_eft_4,
+    fg.Mean, 
+    fg.cov_matrix,
+    fe.Mean, 
+    fe.cov_matrix,
+    frnormBound) {
+  
+  
+  # total number of founders 
+  f1_totnum <- ff1_fnum + ff1_mnum
+  
+  
+  # pedigree
+  ped2 <- data.table(
+    id = 1:f1_totnum,
+    sire = rep(0, f1_totnum),
+    dam = rep(0, f1_totnum),
+    sex = c(rep("F", ff1_fnum), rep("M", ff1_mnum))
+  )
+  
+  
+  # founder date of birth generator
+  f1_dob_f <- as.Date(frnormBound(ff1_fnum, ff1_dobMean_f, ff1_dobSD), origin = as.Date(forigin_dob))
+  f1_dob_m <- as.Date(frnormBound(ff1_mnum, ff1_dobMean_m, ff1_dobSD), origin = as.Date(forigin_dob))
+  f1_dob <- c(f1_dob_f, f1_dob_m)
+  f1_julian_dob <- as.numeric(round(as.Date(f1_dob) - as.Date(forigin_dob), 0))
+  f1_dates <- data.table(dob = f1_dob, julian_dob = f1_julian_dob)
+  f1_dates[, yob := format(dob, "%Y")]
+  
+  
+  # founder dam parity
+  f1_dp <- data.table(dp_rand = runif(f1_totnum))
+  f1_dp[, dam_parity := fcase(
+    dp_rand < fdp_1, 1,
+    dp_rand >= fdp_1 & dp_rand < fdp_2, 2,
+    dp_rand >= fdp_2 & dp_rand < fdp_3, 3,
+    dp_rand >= fdp_3, 4
+    )][, dp_rand := NULL]
+  
+  
+  # founder litter size
+  f1_ls <- data.table(ls_rand = runif(f1_totnum))
+  f1_ls[, litter_size := fcase(
+    ls_rand < fls_1, 1,
+    ls_rand >= fls_1 & ls_rand < fls_2, 2,
+    ls_rand >= fls_2 & ls_rand < fls_3, 3,
+    ls_rand >= fls_3, 4
+    )][, ls_rand := NULL]
+  
+
+  # survival rate for first year of founder mating (2018 all alive = 1)
+  # Create the survival data.table
+  surv_year_cols <- paste0("surv_", finit_yob:ffinal_yob)
+  surv_year_dt <- data.table(matrix(NA_integer_, nrow = f1_totnum, ncol = length(surv_year_cols)))
+  setnames(surv_year_dt, surv_year_cols)
+  
+  # First year: all alive
+  first_col <- paste0("surv_", finit_yob)
+  surv_year_dt[[first_col]] <- 1L
+  
+  # Loop through each year
+  for (y in (finit_yob + 1):ffinal_yob) {
+    curr_col <- paste0("surv_", y)
+    prev_col <- paste0("surv_", y - 1)
+    
+    surv_year_dt[[curr_col]] <- 0L
+    
+    # Those alive in previous year
+    survivors_prev <- surv_year_dt[[prev_col]] == 1
+    
+    # Subset indices for males and females who survived
+    female_ids <- which(survivors_prev & ped2$sex == "F")
+    male_ids   <- which(survivors_prev & ped2$sex == "M")
+    
+    # Apply survival for females (constant 0.8)
+    surv_year_dt[female_ids, (curr_col) := as.integer(runif(length(female_ids)) < surv_rate_f)]
+    
+    # Count how many years each male has already survived
+    if (length(male_ids) > 0) {
+      male_survived_years <- rowSums(surv_year_dt[male_ids, ..surv_year_cols, with = FALSE], na.rm = TRUE)
+      
+      # Males alive <3 years: survival with prob 0.7
+      still_young <- male_ids[male_survived_years < 3]
+      surv_year_dt[still_young, (curr_col) := as.integer(runif(length(still_young)) < surv_rate_m)]
+      
+      # Males alive ≥3 years: die
+      too_old <- male_ids[male_survived_years >= 3]
+      surv_year_dt[too_old, (curr_col) := 0L]
+    }
+  }
+
+  
+  
+  # combine pedigree & fixed effects & survival data
+  f1_full <- cbind(ped2, f1_dates, f1_dp, f1_ls, surv_year_dt)
+  
+  
+  # fixed effects
+  # fixed effect body weight
+  f1_full[, bw_sex_eft := ifelse(
+    sex == "F", fbw_sex_eft_f, fbw_sex_eft_m
+  )]
+  f1_full[, bw_yob_eft := fcase(
+    yob == 2015, fbw_yob_eft_2015,
+    yob == 2016, fbw_yob_eft_2016,
+    yob == 2017, fbw_yob_eft_2017,
+    yob == 2018, fbw_yob_eft_2018,
+    yob == 2019, fbw_yob_eft_2019,
+    yob == 2020, fbw_yob_eft_2020,
+    yob == 2021, fbw_yob_eft_2021,
+    yob == 2022, fbw_yob_eft_2022,
+    yob == 2023, fbw_yob_eft_2023
+  )]
+  f1_full[, bw_dp_eft := fcase(
+    dam_parity == 1, fbw_dp_eft_1,
+    dam_parity > 1, fbw_dp_eft_2
+  )]
+  f1_full[, bw_ls_eft := fcase(
+    litter_size == 1, fbw_ls_eft_1,
+    litter_size == 2, fbw_ls_eft_2,
+    litter_size == 3, fbw_ls_eft_3,
+    litter_size == 4, fbw_ls_eft_4
+  )]
+  
+  
+  # fixed effect feed intake
+  f1_full[, fi_sex_eft := ifelse(
+    sex == "F", fFI_sex_eft_f, fFI_sex_eft_m
+  )]
+  f1_full[, fi_yob_eft := fcase(
+    yob == 2015, fFI_yob_eft_2015,
+    yob == 2016, fFI_yob_eft_2016,
+    yob == 2017, fFI_yob_eft_2017,
+    yob == 2018, fFI_yob_eft_2018,
+    yob == 2019, fFI_yob_eft_2019,
+    yob == 2020, fFI_yob_eft_2020,
+    yob == 2021, fFI_yob_eft_2021,
+    yob == 2022, fFI_yob_eft_2022,
+    yob == 2023, fFI_yob_eft_2023
+  )]
+  f1_full[, fi_dp_eft := fcase(
+    dam_parity == 1, fFI_dp_eft_1,
+    dam_parity > 1, fFI_dp_eft_2
+  )]
+  f1_full[, fi_ls_eft := fcase(
+    litter_size == 1, fFI_ls_eft_1,
+    litter_size == 2, fFI_ls_eft_2,
+    litter_size == 3, fFI_ls_eft_3,
+    litter_size == 4, fFI_ls_eft_4
+  )]
+  
+  # Fixed effect methane
+  f1_full[, ch4_sex_eft := ifelse(
+    sex == "F", fch4_sex_eft_f, fch4_sex_eft_m
+  )]
+  f1_full[, ch4_yob_eft := fcase(
+    yob == 2015, fch4_yob_eft_2015,
+    yob == 2016, fch4_yob_eft_2016,
+    yob == 2017, fch4_yob_eft_2017,
+    yob == 2018, fch4_yob_eft_2018,
+    yob == 2019, fch4_yob_eft_2019,
+    yob == 2020, fch4_yob_eft_2020,
+    yob == 2021, fch4_yob_eft_2021,
+    yob == 2022, fch4_yob_eft_2022,
+    yob == 2023, fch4_yob_eft_2023
+  )]
+  f1_full[, ch4_dp_eft := fcase(
+    dam_parity == 1, fch4_dp_eft_1,
+    dam_parity > 1, fch4_dp_eft_2
+  )]
+  f1_full[, ch4_ls_eft := fcase(
+    litter_size == 1, fch4_ls_eft_1,
+    litter_size == 2, fch4_ls_eft_2,
+    litter_size == 3, fch4_ls_eft_3,
+    litter_size == 4, fch4_ls_eft_4
+  )]
+  
+  
+  # Fixed effect carbon dioxide
+  f1_full[, co2_sex_eft := ifelse(
+    sex == "F", fco2_sex_eft_f, fco2_sex_eft_m
+  )]
+  f1_full[, co2_yob_eft := fcase(
+    yob == 2015, fco2_yob_eft_2015,
+    yob == 2016, fco2_yob_eft_2016,
+    yob == 2017, fco2_yob_eft_2017,
+    yob == 2018, fco2_yob_eft_2018,
+    yob == 2019, fco2_yob_eft_2019,
+    yob == 2020, fco2_yob_eft_2020,
+    yob == 2021, fco2_yob_eft_2021,
+    yob == 2022, fco2_yob_eft_2022,
+    yob == 2023, fco2_yob_eft_2023
+  )]
+  f1_full[, co2_dp_eft := fcase(
+    dam_parity == 1, fco2_dp_eft_1,
+    dam_parity > 1, fco2_dp_eft_2
+  )]
+  f1_full[, co2_ls_eft := fcase(
+    litter_size == 1, fco2_ls_eft_1,
+    litter_size == 2, fco2_ls_eft_2,
+    litter_size == 3, fco2_ls_eft_3,
+    litter_size == 4, fco2_ls_eft_4
+  )]
+  
+  
+  # Fixed effect yield methane
+  f1_full[, ych4_sex_eft := ifelse(
+    sex == "F", fych4_sex_eft_f, fych4_sex_eft_m
+  )]
+  f1_full[, ych4_yob_eft := fcase(
+    yob == 2015, fych4_yob_eft_2015,
+    yob == 2016, fych4_yob_eft_2016,
+    yob == 2017, fych4_yob_eft_2017,
+    yob == 2018, fych4_yob_eft_2018,
+    yob == 2019, fych4_yob_eft_2019,
+    yob == 2020, fych4_yob_eft_2020,
+    yob == 2021, fych4_yob_eft_2021,
+    yob == 2022, fych4_yob_eft_2022,
+    yob == 2023, fych4_yob_eft_2023
+  )]
+  f1_full[, ych4_dp_eft := fcase(
+    dam_parity == 1, fych4_dp_eft_1,
+    dam_parity > 1, fych4_dp_eft_2
+  )]
+  f1_full[, ych4_ls_eft := fcase(
+    litter_size == 1, fych4_ls_eft_1,
+    litter_size == 2, fych4_ls_eft_2,
+    litter_size == 3, fych4_ls_eft_3,
+    litter_size == 4, fych4_ls_eft_4
+  )]  
+  
+  
+  # Fixed effect yield carbon dioxide
+  f1_full[, yco2_sex_eft := ifelse(
+    sex == "F", fyco2_sex_eft_f, fyco2_sex_eft_m
+  )]
+  f1_full[, yco2_yob_eft := fcase(
+    yob == 2015, fyco2_yob_eft_2015,
+    yob == 2016, fyco2_yob_eft_2016,
+    yob == 2017, fyco2_yob_eft_2017,
+    yob == 2018, fyco2_yob_eft_2018,
+    yob == 2019, fyco2_yob_eft_2019,
+    yob == 2020, fyco2_yob_eft_2020,
+    yob == 2021, fyco2_yob_eft_2021,
+    yob == 2022, fyco2_yob_eft_2022,
+    yob == 2023, fyco2_yob_eft_2023
+  )]
+  f1_full[, yco2_dp_eft := fcase(
+    dam_parity == 1, fyco2_dp_eft_1,
+    dam_parity > 1, fyco2_dp_eft_2
+  )]
+    f1_full[, yco2_ls_eft := fcase(
+    litter_size == 1, fyco2_ls_eft_1,
+    litter_size == 2, fyco2_ls_eft_2,
+    litter_size == 3, fyco2_ls_eft_3,
+    litter_size == 4, fyco2_ls_eft_4
+  )]
+  
+  
+  # Generating TBVs
+  fTBVs <- MASS::mvrnorm(n = f1_totnum, mu = fg.Mean, Sigma = fg.cov_matrix)
+  f1_tbv <- as.data.table(fTBVs)
+  setnames(f1_tbv, c("bw.tbv", "fi.tbv", "ch4.tbv", "co2.tbv", "ych4.tbv", "yco2.tbv"))
+  
+  fenv <- MASS::mvrnorm(n = f1_totnum, mu = fe.Mean, Sigma = fe.cov_matrix)
+  f1_env <- as.data.table(fenv)
+  setnames(f1_env, c("bw.env", "fi.env", "ch4.env", "co2.env", "ych4.env", "yco2.env"))
+  
+  f1_full_tbvs_env <- cbind(f1_full, f1_tbv, f1_env)
+  
+  f1_full_tbvs_env[, bw.p := rowSums(.SD, na.rm = TRUE), .SDcols = patterns("^bw")]
+  f1_full_tbvs_env[, fi.p := pmax(0.05, rowSums(.SD, na.rm = TRUE)), .SDcols = patterns("^fi")]
+  f1_full_tbvs_env[, ch4.p := rowSums(.SD, na.rm = TRUE), .SDcols = patterns("^ch4")]
+  f1_full_tbvs_env[, co2.p := rowSums(.SD, na.rm = TRUE), .SDcols = patterns("^co2")]
+  f1_full_tbvs_env[, ych4.p := pmax(5, rowSums(.SD, na.rm = TRUE)), .SDcols = patterns("^ych4")]
+  f1_full_tbvs_env[, yco2.p := rowSums(.SD, na.rm = TRUE), .SDcols = patterns("^yco2")]
+  
+  fcond <- f1_full_tbvs_env
+  
+  fcond[, grep("eft$", names(f1_full_tbvs_env), value = TRUE) := NULL]
+  fcond[, grep("env$", names(f1_full_tbvs_env), value = TRUE) := NULL]
+  fcond[, ch4.p.x := ych4.p * fi.p]
+  fcond[, co2.p.x := yco2.p * fi.p]
+  
+  return(list(
+    expanded = cbind(f1_full, f1_full_tbvs_env[, !names(f1_full_tbvs_env) %in% names(f1_full), with = FALSE]),
+    condensed = fcond
+  ))
+}
+```
+
+
+
+
+Loop to make df_1 : df_20
+```{r}
+set.seed(123)
+seed_list <- sample(1:10000, fsim_num, replace = FALSE)
+
+# Loop through each seed and run your function
+for (i in seq_along(seed_list)) {
+  set.seed(seed_list[i])
+  
+  result <- gen_found_pop (
+    f1_fnum,
+    f1_mnum,
+    init_yob,
+    final_yob,
+    f1_dobMean_f,
+    f1_dobMean_m,
+    f1_dobSD,
+    origin_dob,
+    dp_1,
+    dp_2,
+    dp_3,
+    ls_1,
+    ls_2,
+    ls_3,
+    bw_sex_eft_f, 
+    bw_sex_eft_m,
+    bw_yob_eft_2015,
+    bw_yob_eft_2016,
+    bw_yob_eft_2017,
+    bw_yob_eft_2018,
+    bw_yob_eft_2019,
+    bw_yob_eft_2020,
+    bw_yob_eft_2021,
+    bw_yob_eft_2022,
+    bw_yob_eft_2023, 
+    bw_dp_eft_1, 
+    bw_dp_eft_2,
+    bw_ls_eft_1,
+    bw_ls_eft_2,
+    bw_ls_eft_3,
+    bw_ls_eft_4,
+    FI_sex_eft_f, 
+    FI_sex_eft_m,
+    FI_yob_eft_2015,
+    FI_yob_eft_2016,
+    FI_yob_eft_2017,
+    FI_yob_eft_2018,
+    FI_yob_eft_2019,
+    FI_yob_eft_2020,
+    FI_yob_eft_2021,
+    FI_yob_eft_2022,
+    FI_yob_eft_2023, 
+    FI_dp_eft_1, 
+    FI_dp_eft_2,
+    FI_ls_eft_1,
+    FI_ls_eft_2,
+    FI_ls_eft_3,
+    FI_ls_eft_4,
+    ch4_sex_eft_f, 
+    ch4_sex_eft_m,
+    ch4_yob_eft_2015,
+    ch4_yob_eft_2016,
+    ch4_yob_eft_2017,
+    ch4_yob_eft_2018,
+    ch4_yob_eft_2019,
+    ch4_yob_eft_2020,
+    ch4_yob_eft_2021,
+    ch4_yob_eft_2022,
+    ch4_yob_eft_2023, 
+    ch4_dp_eft_1, 
+    ch4_dp_eft_2,
+    ch4_ls_eft_1,
+    ch4_ls_eft_2,
+    ch4_ls_eft_3,
+    ch4_ls_eft_4,
+    co2_sex_eft_f, 
+    co2_sex_eft_m,
+    co2_yob_eft_2015,
+    co2_yob_eft_2016,
+    co2_yob_eft_2017,
+    co2_yob_eft_2018,
+    co2_yob_eft_2019,
+    co2_yob_eft_2020,
+    co2_yob_eft_2021,
+    co2_yob_eft_2022,
+    co2_yob_eft_2023,
+    co2_dp_eft_1, 
+    co2_dp_eft_2,
+    co2_ls_eft_1,
+    co2_ls_eft_2,
+    co2_ls_eft_3,
+    co2_ls_eft_4,
+    ych4_sex_eft_f, 
+    ych4_sex_eft_m,
+    ych4_yob_eft_2015,
+    ych4_yob_eft_2016,
+    ych4_yob_eft_2017,
+    ych4_yob_eft_2018,
+    ych4_yob_eft_2019,
+    ych4_yob_eft_2020,
+    ych4_yob_eft_2021,
+    ych4_yob_eft_2022,
+    ych4_yob_eft_2023,
+    ych4_dp_eft_1, 
+    ych4_dp_eft_2,
+    ych4_ls_eft_1,
+    ych4_ls_eft_2,
+    ych4_ls_eft_3,
+    ych4_ls_eft_4,
+    yco2_sex_eft_f, 
+    yco2_sex_eft_m,
+    yco2_yob_eft_2015,
+    yco2_yob_eft_2016,
+    yco2_yob_eft_2017,
+    yco2_yob_eft_2018,
+    yco2_yob_eft_2019,
+    yco2_yob_eft_2020,
+    yco2_yob_eft_2021,
+    yco2_yob_eft_2022,
+    yco2_yob_eft_2023, 
+    yco2_dp_eft_1, 
+    yco2_dp_eft_2,
+    yco2_ls_eft_1,
+    yco2_ls_eft_2,
+    yco2_ls_eft_3,
+    yco2_ls_eft_4,
+    g.Mean, 
+    g.cov_matrix,
+    e.Mean, 
+    e.cov_matrix,
+    rnormBound
+  )
+
+  
+    assign(paste0("founder_", i), result$condensed)
+}
+```
+
+
+
+
+Working for mating function 
+
+We will use 
+
+If we were to have 6 years of reproduction and have 1500 offspring born each season with a survival rate of 0.8, we will have 9520 animals created in the simulation and 7616 animals surviving by the end of the simulation.
+
+
+
+
+Mating function
+```{r}
+
+
+mate_founders <- function(
+    ffounder,
+    fselect_sires_num,
+    fn_gen,
+    finit_yob,
+    ffinal_yob,
+    fdp_1,
+    fdp_2,
+    fdp_3,
+    fls_1,
+    fls_2,
+    fls_3,
+    fbw_sex_eft_f, 
+    fbw_sex_eft_m,
+    fbw_yob_eft_2015,
+    fbw_yob_eft_2016,
+    fbw_yob_eft_2017,
+    fbw_yob_eft_2018,
+    fbw_yob_eft_2019,
+    fbw_yob_eft_2020,
+    fbw_yob_eft_2021,
+    fbw_yob_eft_2022,
+    fbw_yob_eft_2023, 
+    fbw_dp_eft_1, 
+    fbw_dp_eft_2,
+    fbw_ls_eft_1,
+    fbw_ls_eft_2,
+    fbw_ls_eft_3,
+    fbw_ls_eft_4,
+    fFI_sex_eft_f, 
+    fFI_sex_eft_m,
+    fFI_yob_eft_2015,
+    fFI_yob_eft_2016,
+    fFI_yob_eft_2017,
+    fFI_yob_eft_2018,
+    fFI_yob_eft_2019,
+    fFI_yob_eft_2020,
+    fFI_yob_eft_2021,
+    fFI_yob_eft_2022,
+    fFI_yob_eft_2023, 
+    fFI_dp_eft_1, 
+    fFI_dp_eft_2,
+    fFI_ls_eft_1,
+    fFI_ls_eft_2,
+    fFI_ls_eft_3,
+    fFI_ls_eft_4,
+    fch4_sex_eft_f, 
+    fch4_sex_eft_m,
+    fch4_yob_eft_2015,
+    fch4_yob_eft_2016,
+    fch4_yob_eft_2017,
+    fch4_yob_eft_2018,
+    fch4_yob_eft_2019,
+    fch4_yob_eft_2020,
+    fch4_yob_eft_2021,
+    fch4_yob_eft_2022,
+    fch4_yob_eft_2023, 
+    fch4_dp_eft_1, 
+    fch4_dp_eft_2,
+    fch4_ls_eft_1,
+    fch4_ls_eft_2,
+    fch4_ls_eft_3,
+    fch4_ls_eft_4,
+    fco2_sex_eft_f, 
+    fco2_sex_eft_m,
+    fco2_yob_eft_2015,
+    fco2_yob_eft_2016,
+    fco2_yob_eft_2017,
+    fco2_yob_eft_2018,
+    fco2_yob_eft_2019,
+    fco2_yob_eft_2020,
+    fco2_yob_eft_2021,
+    fco2_yob_eft_2022,
+    fco2_yob_eft_2023,
+    fco2_dp_eft_1, 
+    fco2_dp_eft_2,
+    fco2_ls_eft_1,
+    fco2_ls_eft_2,
+    fco2_ls_eft_3,
+    fco2_ls_eft_4,
+    fych4_sex_eft_f, 
+    fych4_sex_eft_m,
+    fych4_yob_eft_2015,
+    fych4_yob_eft_2016,
+    fych4_yob_eft_2017,
+    fych4_yob_eft_2018,
+    fych4_yob_eft_2019,
+    fych4_yob_eft_2020,
+    fych4_yob_eft_2021,
+    fych4_yob_eft_2022,
+    fych4_yob_eft_2023,
+    fych4_dp_eft_1, 
+    fych4_dp_eft_2,
+    fych4_ls_eft_1,
+    fych4_ls_eft_2,
+    fych4_ls_eft_3,
+    fych4_ls_eft_4,
+    fyco2_sex_eft_f, 
+    fyco2_sex_eft_m,
+    fyco2_yob_eft_2015,
+    fyco2_yob_eft_2016,
+    fyco2_yob_eft_2017,
+    fyco2_yob_eft_2018,
+    fyco2_yob_eft_2019,
+    fyco2_yob_eft_2020,
+    fyco2_yob_eft_2021,
+    fyco2_yob_eft_2022,
+    fyco2_yob_eft_2023, 
+    fyco2_dp_eft_1, 
+    fyco2_dp_eft_2,
+    fyco2_ls_eft_1,
+    fyco2_ls_eft_2,
+    fyco2_ls_eft_3,
+    fyco2_ls_eft_4,
+    fg.sigma, 
+    fe.Mean, 
+    fe.cov_matrix,
+    rnormBound
+) {
+  prev_gen <- ffounder
+  new_gen <- ffounder
+  
+  for (g in 1:fn_gen){
+    ## New section giving each alive dam a child
+    latest_yob <- as.numeric(max(prev_gen$yob)) + 1 # a year after prev gen
+    first_yob <- as.numeric(min(prev_gen$yob)) + 2  # 2018 because this is not counting founder dobs
+    all_years <- first_yob:(latest_yob + 1) 
+    
+    surv_year <- max(finit_yob, latest_yob)
+    
+    # most recent year with survival (which has to be the year before the current year hence "-1")
+    
+    latest_surv_col <- grep(paste0("surv_", surv_year), names(prev_gen), value = TRUE)
+    # latest_surv_col <- latest_surv_col[which.max(as.integer(sub("surv_", "", latest_surv_col)))]
+
+    ####
+    # Determine if we are generating offspring for the first_yob
+    if (latest_surv_col == paste0("surv_", finit_yob)) {
+      
+      # No survival columns exist yet — use all eligible founders
+      eligible_dams <- prev_gen[
+        sex == "F" & yob < first_yob,
+        .(id, sire, dam, yob)
+      ]
+      
+      selected_sires <- prev_gen[
+        sex == "M" & yob < first_yob,
+        .(id, sire, dam)
+      ]
+      
+    } else {
+      
+      # Dams alive in the previous year
+      eligible_dams <- prev_gen[
+        sex == "F" & yob <= (latest_yob - 2) & get(latest_surv_col) == 1,
+        .(id, sire, dam, yob)
+      ]
+      
+      # Sires alive in the previous year
+      selected_sires <- prev_gen[
+        sex == "M" & get(latest_surv_col) == 1,
+        .(id, sire, dam)
+      ]
+    }
+
+    # Rename ancestry columns
+    setnames(eligible_dams, c("id", "sire", "dam", "yob"), c("id", "dam_sire", "dam_dam", "dam_yob"))
+    setnames(selected_sires, c("id", "sire", "dam"), c("id", "sire_dam", "sire_sire"))
+    ####
+    
+    offsp_num <- nrow(eligible_dams) # we want every eligible dam to have a litter
+    
+    new_ped <- data.table(
+      id       = (max(new_gen$id) + 1):(max(new_gen$id) + offsp_num),
+      dam      = eligible_dams$id,
+      dam_sire = eligible_dams$dam_sire,
+      dam_dam  = eligible_dams$dam_dam
+    )   
+    
+    # randomly select sires in accordance with inbreeding prevention rules
+    new_ped[, sire := NA_integer_]
+    
+    
+    for (i in 1:offsp_num) {
+      dam_id     <- new_ped$dam[i]
+      dam_sire   <- new_ped$dam_sire[i]
+      dam_dam    <- new_ped$dam_dam[i]
+      
+      # Filter sires that don’t share ancestry with the dam or are founders
+      
+      ####
+      # Filter eligible dams
+      possible_sires <- selected_sires[
+        # Allow selection if they are a founder
+        sire_sire == 0 | sire_dam == 0 |
+          (
+            # Otherwise, enforce all pedigree constraints:
+            !(sire_sire %in% dam_sire) &
+              !(sire_dam  %in% dam_dam) &
+              id != dam_sire
+          )
+      ]
+      
+      if (nrow(possible_sires) > 0) {
+        new_ped$sire[i] <- sample(possible_sires$id, 1)
+      } else {
+        warning("No eligible sires found")
+      }
+    }
+      ####
+      
+      
+
+    
+    new_ped[, c("dam_sire", "dam_dam") := NULL]
+    setcolorder(new_ped, c("id", "sire", "dam"))
+    
+    
+    # fixed effect traits traits
+    new_fet <- data.table(sex = sample(c("M", "F"), offsp_num, replace = TRUE))
+    
+    # dob
+    gn_dob <- as.Date(rnormBound(offsp_num, (288 + (latest_yob-finit_yob + 3) * 365), 
+                                 f1_dobSD), origin = as.Date(origin_dob))
+    gn_julian_dob <- as.numeric(round(as.Date(gn_dob) - as.Date(origin_dob), 0))
+    gn_dates <- data.table(dob = gn_dob, julian_dob = gn_julian_dob)
+    new_fet <- cbind(new_fet, gn_dates)
+    new_fet[, yob := format(dob, "%Y")]
+    
+    # dam parity
+    gn_dp_prior <- data.table(id = new_ped$id,
+                        dp_dam = new_ped$dam,
+                        dp_yob = new_fet$yob
+                        )
+    gn_dp <- merge(
+      gn_dp_prior,
+      eligible_dams,
+      by.x = "dp_dam",
+      by.y = "id",
+      all.x = TRUE  # keep all rows from gn_dp_prior
+      )
+    gn_dp[, dp_yob := as.numeric(dp_yob)]
+    gn_dp[, dam_yob := as.numeric(dam_yob)]
+    gn_dp[, dam_parity := dp_yob - (dam_yob + 2) + 1] # +1 accounts for current birth being counted
+    gn_dp <- gn_dp[, .(dam_parity)]
+    new_fet <- cbind(new_fet, gn_dp)
+    
+    # litter size
+    gn_ls <- data.table(ls_rand = runif(offsp_num))
+    gn_ls[, litter_size := fcase(
+      ls_rand < fls_1, 1,
+      ls_rand >= fls_1 & ls_rand < fls_2, 2,
+      ls_rand >= fls_2 & ls_rand < fls_3, 3,
+      ls_rand >= fls_3, 4
+    )][, ls_rand := NULL]
+    new_fet <- cbind(new_fet, gn_ls)
+    
+    # survival rate for first year of founder mating (2018 all alive = 1)
+    years <- finit_yob:ffinal_yob
+
+    surv_year_cols <- paste0("surv_", finit_yob:ffinal_yob)
+    surv_year_dt <- data.table(matrix(NA_integer_, nrow = offsp_num, ncol = length(surv_year_cols)))
+    setnames(surv_year_dt, surv_year_cols)
+    
+    
+    for (y in finit_yob:ffinal_yob) {
+      col <- paste0("surv_", y)
+    
+      if (y < latest_yob) {
+        surv_year_dt[[col]] <- 0L  # Not yet born
+      } 
+      else if (y == latest_yob) {
+        surv_year_dt[[col]] <- 1L  # All born alive
+      } 
+      else {
+        prev_col <- paste0("surv_", y - 1)
+        alive_last_year <- surv_year_dt[[prev_col]] == 1L
+    
+        surv_year_dt[[col]] <- 0L  # default to dead
+    
+        # Get survivors by sex
+        female_ids <- which(alive_last_year & new_fet$sex == "F")
+        male_ids   <- which(alive_last_year & new_fet$sex == "M")
+    
+        # Females: survive with surv_rate_f
+        if (length(female_ids) > 0) {
+          surv_year_dt[female_ids, (col) := as.integer(runif(length(female_ids)) < surv_rate_f)]
+        }
+    
+        # Males: check survival duration before applying rate
+        if (length(male_ids) > 0) {
+          # Count how many years each male has survived so far
+          male_survived_years <- rowSums(
+            surv_year_dt[male_ids, ..surv_year_cols, with = FALSE], na.rm = TRUE
+          )
+    
+          # Males with <3 years of survival
+          still_young <- male_ids[male_survived_years < 3]
+          if (length(still_young) > 0) {
+            surv_year_dt[still_young, (col) := as.integer(runif(length(still_young)) < surv_rate_m)]
+          }
+    
+          # Males with ≥3 years of survival: die
+          too_old <- male_ids[male_survived_years >= 3]
+          if (length(too_old) > 0) {
+            surv_year_dt[too_old, (col) := 0L]
+          }
+        }
+      }
+    }
+
+    
+    new_fet <- cbind(new_fet, surv_year_dt)
+    
+    
+    
+    
+    
+    # fixed effects
+    # fixed effect body weight
+    new_fet[, bw_sex_eft := ifelse(
+      sex == "F", fbw_sex_eft_f, fbw_sex_eft_m
+    )]
+    new_fet[, bw_yob_eft := fcase(
+      yob == 2015, fbw_yob_eft_2015,
+      yob == 2016, fbw_yob_eft_2016,
+      yob == 2017, fbw_yob_eft_2017,
+      yob == 2018, fbw_yob_eft_2018,
+      yob == 2019, fbw_yob_eft_2019,
+      yob == 2020, fbw_yob_eft_2020,
+      yob == 2021, fbw_yob_eft_2021,
+      yob == 2022, fbw_yob_eft_2022,
+      yob == 2023, fbw_yob_eft_2023
+    )]
+    new_fet[, bw_dp_eft := fcase(
+      dam_parity == 1, fbw_dp_eft_1,
+      dam_parity > 1, fbw_dp_eft_2
+    )]
+    new_fet[, bw_ls_eft := fcase(
+      litter_size == 1, fbw_ls_eft_1,
+      litter_size == 2, fbw_ls_eft_2,
+      litter_size == 3, fbw_ls_eft_3,
+      litter_size == 4, fbw_ls_eft_4
+    )]
+    
+    
+    # fixed effect feed intake
+    new_fet[, fi_sex_eft := ifelse(
+      sex == "F", fFI_sex_eft_f, fFI_sex_eft_m
+    )]
+    new_fet[, fi_yob_eft := fcase(
+      yob == 2015, fFI_yob_eft_2015,
+      yob == 2016, fFI_yob_eft_2016,
+      yob == 2017, fFI_yob_eft_2017,
+      yob == 2018, fFI_yob_eft_2018,
+      yob == 2019, fFI_yob_eft_2019,
+      yob == 2020, fFI_yob_eft_2020,
+      yob == 2021, fFI_yob_eft_2021,
+      yob == 2022, fFI_yob_eft_2022,
+      yob == 2023, fFI_yob_eft_2023
+    )]
+    new_fet[, fi_dp_eft := fcase(
+      dam_parity == 1, fFI_dp_eft_1,
+      dam_parity > 1, fFI_dp_eft_2
+    )]
+    new_fet[, fi_ls_eft := fcase(
+      litter_size == 1, fFI_ls_eft_1,
+      litter_size == 2, fFI_ls_eft_2,
+      litter_size == 3, fFI_ls_eft_3,
+      litter_size == 4, fFI_ls_eft_4
+    )]
+    
+    # Fixed effect methane
+    new_fet[, fch4_sex_eft := ifelse(
+      sex == "F", fch4_sex_eft_f, fch4_sex_eft_m
+    )]
+    new_fet[, fch4_yob_eft := fcase(
+      yob == 2015, fch4_yob_eft_2015,
+      yob == 2016, fch4_yob_eft_2016,
+      yob == 2017, fch4_yob_eft_2017,
+      yob == 2018, fch4_yob_eft_2018,
+      yob == 2019, fch4_yob_eft_2019,
+      yob == 2020, fch4_yob_eft_2020,
+      yob == 2021, fch4_yob_eft_2021,
+      yob == 2022, fch4_yob_eft_2022,
+      yob == 2023, fch4_yob_eft_2023
+    )]
+    new_fet[, fch4_dp_eft := fcase(
+      dam_parity == 1, fch4_dp_eft_1,
+      dam_parity > 1, fch4_dp_eft_2
+    )]
+    new_fet[, fch4_ls_eft := fcase(
+      litter_size == 1, fch4_ls_eft_1,
+      litter_size == 2, fch4_ls_eft_2,
+      litter_size == 3, fch4_ls_eft_3,
+      litter_size == 4, fch4_ls_eft_4
+    )]
+    
+    
+    # Fixed effect carbon dioxide
+    new_fet[, fco2_sex_eft := ifelse(
+      sex == "F", fco2_sex_eft_f, fco2_sex_eft_m
+    )]
+    new_fet[, fco2_yob_eft := fcase(
+      yob == 2015, fco2_yob_eft_2015,
+      yob == 2016, fco2_yob_eft_2016,
+      yob == 2017, fco2_yob_eft_2017,
+      yob == 2018, fco2_yob_eft_2018,
+      yob == 2019, fco2_yob_eft_2019,
+      yob == 2020, fco2_yob_eft_2020,
+      yob == 2021, fco2_yob_eft_2021,
+      yob == 2022, fco2_yob_eft_2022,
+      yob == 2023, fco2_yob_eft_2023
+    )]
+    new_fet[, fco2_dp_eft := fcase(
+      dam_parity == 1, fco2_dp_eft_1,
+      dam_parity > 1, fco2_dp_eft_2
+    )]
+    new_fet[, fco2_ls_eft := fcase(
+      litter_size == 1, fco2_ls_eft_1,
+      litter_size == 2, fco2_ls_eft_2,
+      litter_size == 3, fco2_ls_eft_3,
+      litter_size == 4, fco2_ls_eft_4
+    )]
+    
+    
+    # Fixed effect yield methane
+    new_fet[, fych4_sex_eft := ifelse(
+      sex == "F", fych4_sex_eft_f, fych4_sex_eft_m
+    )]
+    new_fet[, fych4_yob_eft := fcase(
+      yob == 2015, fych4_yob_eft_2015,
+      yob == 2016, fych4_yob_eft_2016,
+      yob == 2017, fych4_yob_eft_2017,
+      yob == 2018, fych4_yob_eft_2018,
+      yob == 2019, fych4_yob_eft_2019,
+      yob == 2020, fych4_yob_eft_2020,
+      yob == 2021, fych4_yob_eft_2021,
+      yob == 2022, fych4_yob_eft_2022,
+      yob == 2023, fych4_yob_eft_2023
+    )]
+    new_fet[, fych4_dp_eft := fcase(
+      dam_parity == 1, fych4_dp_eft_1,
+      dam_parity > 1, fych4_dp_eft_2
+    )]
+    new_fet[, fych4_ls_eft := fcase(
+      litter_size == 1, fych4_ls_eft_1,
+      litter_size == 2, fych4_ls_eft_2,
+      litter_size == 3, fych4_ls_eft_3,
+      litter_size == 4, fych4_ls_eft_4
+    )]  
+    
+    
+    # Fixed effect yield carbon dioxide
+    new_fet[, fyco2_sex_eft := ifelse(
+      sex == "F", fyco2_sex_eft_f, fyco2_sex_eft_m
+    )]
+    new_fet[, fyco2_yob_eft := fcase(
+      yob == 2015, fyco2_yob_eft_2015,
+      yob == 2016, fyco2_yob_eft_2016,
+      yob == 2017, fyco2_yob_eft_2017,
+      yob == 2018, fyco2_yob_eft_2018,
+      yob == 2019, fyco2_yob_eft_2019,
+      yob == 2020, fyco2_yob_eft_2020,
+      yob == 2021, fyco2_yob_eft_2021,
+      yob == 2022, fyco2_yob_eft_2022,
+      yob == 2023, fyco2_yob_eft_2023
+    )]
+    new_fet[, fyco2_dp_eft := fcase(
+      dam_parity == 1, fyco2_dp_eft_1,
+      dam_parity > 1, fyco2_dp_eft_2
+    )]
+    new_fet[, fyco2_ls_eft := fcase(
+      litter_size == 1, fyco2_ls_eft_1,
+      litter_size == 2, fyco2_ls_eft_2,
+      litter_size == 3, fyco2_ls_eft_3,
+      litter_size == 4, fyco2_ls_eft_4
+    )]
+    
+    
+    
+    
+    
+    # Calculating TBVs
+    # Calculating Mendellian sampling coefficient
+    MS <- mvrnorm(offsp_num, rep(0, length(traitNames)),
+                  fg.sigma, empirical = TRUE)
+    MS_os <- MS * sqrt(0.5)
+    MS_os <- setnames(as.data.table(MS_os), c("MS.bw_tbv", "MS.fi_tbv", "MS.ch4_tbv", "MS.co2_tbv", "MS.ych4_tbv", "MS.yco2_tbv"))
+    
+    # Get sire and dam TBVs
+    sire_tbvs <- prev_gen[, c("id", paste0(traitNames, ".tbv")), with = FALSE]
+    setnames(sire_tbvs, c("id", paste0("sire_", traitNames, "_tbv")))
+    dam_tbvs <- copy(sire_tbvs)
+    setnames(dam_tbvs, old = names(dam_tbvs), new = c("id", paste0("dam_", traitNames, "_tbv")))
+    
+    # Merge with new_gen
+    TBV_data <- merge(new_ped, sire_tbvs, by.x = "sire", by.y = "id", all.x = TRUE)
+    TBV_data <- merge(TBV_data, dam_tbvs, by.x = "dam",  by.y = "id", all.x = TRUE)
+    
+    # adding MS_os to data frame
+    TBV_data <- cbind(TBV_data, MS_os)
+    
+    # adding 
+    for (trait in traitNames) {
+      tbv_col <- paste0(trait, ".tbv")
+      sire_col <- paste0("sire_", trait, "_tbv")
+      dam_col  <- paste0("dam_", trait, "_tbv")
+      ms_col   <- paste0("MS.", trait, "_tbv")
+      
+      TBV_data[, (tbv_col) := 0.5 * get(sire_col) + 0.5 * get(dam_col) + get(ms_col)]
+    }
+    
+    
+    
+    drop_cols <- c(
+      grep("sire_|dam_|^MS\\.", names(TBV_data), value = TRUE),
+      "sire",
+      "dam"
+    )
+    
+    TBV_data[, (drop_cols) := NULL]
+    TBV_data <- setorder(TBV_data, id)
+    TBV_data[, id := NULL]
+    
+    
+    # Random environmental effects
+    env <- MASS::mvrnorm(n = offsp_num, mu = fe.Mean, Sigma = fe.cov_matrix)
+    gn_env <- as.data.table(env)
+    setnames(gn_env, c("bw.env", "fi.env", "ch4.env", "co2.env", "ych4.env", "yco2.env"))
+    
+    
+    # Full data set 
+    new_gen <- cbind(new_ped, new_fet, TBV_data, gn_env)
+    
+    new_gen[, bw.p := rowSums(.SD, na.rm = TRUE), .SDcols = patterns("^bw")]
+    new_gen[, fi.p := pmax(0.05, rowSums(.SD, na.rm = TRUE)), .SDcols = patterns("^fi")]
+    new_gen[, ch4.p := rowSums(.SD, na.rm = TRUE), .SDcols = patterns("^ch4")]
+    new_gen[, co2.p := rowSums(.SD, na.rm = TRUE), .SDcols = patterns("^co2")]
+    new_gen[, ych4.p := pmax(5, rowSums(.SD, na.rm = TRUE)), .SDcols = patterns("^ych4")]
+    new_gen[, yco2.p := rowSums(.SD, na.rm = TRUE), .SDcols = patterns("^yco2")]
+    
+    # keep only the highest 20 body weight sires for breeding
+    top_sires <- new_gen[sex == "M"][order(-bw.p)][1:fselect_sires_num]
+    # Keep all females
+    females <- new_gen[sex == "F"]
+    # Combine top males + all females
+    new_gen_filtered <- rbind(top_sires, females)
+    # (Optional): Sort by ID for consistency
+    new_gen_filtered <- setorder(new_gen_filtered, id)
+    
+    new_gen_cond <- new_gen_filtered[, grep("eft$", names(new_gen_filtered), value = TRUE) := NULL]
+    new_gen_cond <- new_gen_filtered[, grep("env$", names(new_gen_filtered), value = TRUE) := NULL]
+    new_gen_cond[, ch4.p.x := ych4.p * fi.p]
+    new_gen_cond[, co2.p.x := yco2.p * fi.p]
+    
+    
+    prev_gen <- rbind(prev_gen, new_gen_cond)
+  }
+  
+  return(prev_gen)
+}
+```
+
+
+```{r}
+set.seed(123)
+
+for (i in 1:20) {
+  founder <- get(paste0("founder_", i))
+  
+  assign(paste0("full_sim_", i),
+         mate_founders(
+          founder,
+          select_sires_num,
+          n_gen,
+          init_yob,
+          final_yob,
+          dp_1,
+          dp_2,
+          dp_3,
+          ls_1,
+          ls_2,
+          ls_3,
+          bw_sex_eft_f, 
+          bw_sex_eft_m,
+          bw_yob_eft_2015,
+          bw_yob_eft_2016,
+          bw_yob_eft_2017,
+          bw_yob_eft_2018,
+          bw_yob_eft_2019,
+          bw_yob_eft_2020,
+          bw_yob_eft_2021,
+          bw_yob_eft_2022,
+          bw_yob_eft_2023, 
+          bw_dp_eft_1, 
+          bw_dp_eft_2,
+          bw_ls_eft_1,
+          bw_ls_eft_2,
+          bw_ls_eft_3,
+          bw_ls_eft_4,
+          FI_sex_eft_f, 
+          FI_sex_eft_m,
+          FI_yob_eft_2015,
+          FI_yob_eft_2016,
+          FI_yob_eft_2017,
+          FI_yob_eft_2018,
+          FI_yob_eft_2019,
+          FI_yob_eft_2020,
+          FI_yob_eft_2021,
+          FI_yob_eft_2022,
+          FI_yob_eft_2023, 
+          FI_dp_eft_1, 
+          FI_dp_eft_2,
+          FI_ls_eft_1,
+          FI_ls_eft_2,
+          FI_ls_eft_3,
+          FI_ls_eft_4,
+          ch4_sex_eft_f, 
+          ch4_sex_eft_m,
+          ch4_yob_eft_2015,
+          ch4_yob_eft_2016,
+          ch4_yob_eft_2017,
+          ch4_yob_eft_2018,
+          ch4_yob_eft_2019,
+          ch4_yob_eft_2020,
+          ch4_yob_eft_2021,
+          ch4_yob_eft_2022,
+          ch4_yob_eft_2023, 
+          ch4_dp_eft_1, 
+          ch4_dp_eft_2,
+          ch4_ls_eft_1,
+          ch4_ls_eft_2,
+          ch4_ls_eft_3,
+          ch4_ls_eft_4,
+          co2_sex_eft_f, 
+          co2_sex_eft_m,
+          co2_yob_eft_2015,
+          co2_yob_eft_2016,
+          co2_yob_eft_2017,
+          co2_yob_eft_2018,
+          co2_yob_eft_2019,
+          co2_yob_eft_2020,
+          co2_yob_eft_2021,
+          co2_yob_eft_2022,
+          co2_yob_eft_2023,
+          co2_dp_eft_1, 
+          co2_dp_eft_2,
+          co2_ls_eft_1,
+          co2_ls_eft_2,
+          co2_ls_eft_3,
+          co2_ls_eft_4,
+          ych4_sex_eft_f, 
+          ych4_sex_eft_m,
+          ych4_yob_eft_2015,
+          ych4_yob_eft_2016,
+          ych4_yob_eft_2017,
+          ych4_yob_eft_2018,
+          ych4_yob_eft_2019,
+          ych4_yob_eft_2020,
+          ych4_yob_eft_2021,
+          ych4_yob_eft_2022,
+          ych4_yob_eft_2023,
+          ych4_dp_eft_1, 
+          ych4_dp_eft_2,
+          ych4_ls_eft_1,
+          ych4_ls_eft_2,
+          ych4_ls_eft_3,
+          ych4_ls_eft_4,
+          yco2_sex_eft_f, 
+          yco2_sex_eft_m,
+          yco2_yob_eft_2015,
+          yco2_yob_eft_2016,
+          yco2_yob_eft_2017,
+          yco2_yob_eft_2018,
+          yco2_yob_eft_2019,
+          yco2_yob_eft_2020,
+          yco2_yob_eft_2021,
+          yco2_yob_eft_2022,
+          yco2_yob_eft_2023, 
+          yco2_dp_eft_1, 
+          yco2_dp_eft_2,
+          yco2_ls_eft_1,
+          yco2_ls_eft_2,
+          yco2_ls_eft_3,
+          yco2_ls_eft_4,
+          g.sigma,
+          e.Mean, 
+          e.cov_matrix,
+          rnormBound
+        )
+  )
+}
+```
+
+
+# Simulation result demographics 
+
+Body Weights
+```{r}
+# This is a check to see if selecting for bw affects the full population
+x <- full_sim_1$bw.p
+y <- founder_1$bw.p
+
+df <- data.frame(
+  value = c(x, y),
+  group = c(rep("X", length(x)), rep("Y", length(y)))
+)
+
+# Plot overlapping histograms with relabeled legend
+ggplot(df, aes(x = value, fill = group)) +
+  geom_histogram(position = "identity", alpha = 0.5, bins = 30, color = "black") +
+  scale_fill_manual(
+    values = c("X" = "gold2", "Y" = "#800020"),
+    labels = c("X" = "Full Population", "Y" = "Founder Population"),
+    name = "Generation"
+  ) +
+  labs(title = "Comparison of Founder and Full Data Set distributions for body weight (kg)", x = "body weight (kg)", y = "Count") +
+  theme_minimal()
+```
+
+
+```{r}
+# List to store the plots
+plot_list <- list()
+
+# Loop through full_sim_1 to full_sim_20
+for (i in 1:20) {
+  full_sim <- get(paste0("full_sim_", i))
+  
+  # Extract bw.p
+  x <- full_sim$bw.p
+  y <- founder$bw.p
+  
+  df <- data.frame(
+    value = c(x, y),
+    group = c(rep("X", length(x)), rep("Y", length(y)))
+  )
+  
+  p <- ggplot(df, aes(x = value, fill = group)) +
+    geom_histogram(position = "identity", alpha = 0.5, bins = 30, color = "black") +
+    scale_fill_manual(
+      values = c("X" = "gold2", "Y" = "#800020"),
+      labels = c("X" = "Full Population", "Y" = "Founder Population"),
+      name = "Generation"
+    ) +
+    labs(
+      title = paste("Sim", i),
+      x = "Body weight (kg)",
+      y = "Count"
+    ) +
+    theme_minimal() +
+    theme(legend.position = "none")  # Hide legends for all but one
+
+  plot_list[[i]] <- p
+}
+
+# Increase plotting device size (interactive RStudio)
+dev.new(width = 16, height = 12)  # adjust size as needed
+
+
+
+# Redraw plots on new page
+grid.newpage()
+grid.draw(arrangeGrob(grobs = plot_list[1:4], ncol = 2, nrow = 2))
+grid.newpage()
+grid.draw(arrangeGrob(grobs = plot_list[5:8], ncol = 2, nrow = 2))
+grid.newpage()
+grid.draw(arrangeGrob(grobs = plot_list[9:12], ncol = 2, nrow = 2))
+grid.newpage()
+grid.draw(arrangeGrob(grobs = plot_list[13:16], ncol = 2, nrow = 2))
+grid.newpage()
+grid.draw(arrangeGrob(grobs = plot_list[17:20], ncol = 2, nrow = 2))
+```
+
+
+Comparison between PAC ch4 and ych4 x fi 
+```{r}
+# This is a check to see if selecting for bw affects the full population
+x <- testing_mating_func$ch4.p.x
+y <- testing_mating_func$ch4.p
+
+df <- data.frame(
+  value = c(x, y),
+  group = c(rep("X", length(x)), rep("Y", length(y)))
+)
+
+# Plot overlapping histograms with relabeled legend
+ggplot(df, aes(x = value, fill = group)) +
+  geom_histogram(position = "identity", alpha = 0.5, bins = 30, color = "black") +
+  scale_fill_manual(
+    values = c("X" = "skyblue", "Y" = "salmon"),
+    labels = c("X" = "ych4 x fi", "Y" = "PAC ch4"),
+    name = "Generation"
+  ) +
+  labs(title = "Comparison of daily ch4 phenotypes i.) ych4 x fi and ii.) PAC ch4") +
+  theme_minimal()
+```
+
+```{r}
+# List to store the plots
+ch4_plot_list <- list()
+
+# Loop through full_sim_1 to full_sim_20
+for (i in 1:20) {
+  sim_data <- get(paste0("full_sim_", i))
+  
+  # Check columns exist
+  if (!all(c("ch4.p.x", "ch4.p") %in% names(sim_data))) {
+    warning(paste("Missing columns in full_sim_", i))
+    next
+  }
+  
+  x <- sim_data$ch4.p.x
+  y <- sim_data$ch4.p
+  
+  df <- data.frame(
+    value = c(x, y),
+    group = c(rep("X", length(x)), rep("Y", length(y)))
+  )
+  
+  p <- ggplot(df, aes(x = value, fill = group)) +
+    geom_histogram(position = "identity", alpha = 0.5, bins = 30, color = "black") +
+    scale_fill_manual(
+      values = c("X" = "skyblue", "Y" = "salmon"),
+      labels = c("X" = "ych4 x fi", "Y" = "PAC ch4"),
+      name = "Generation"
+    ) +
+    labs(
+      title = paste("Sim", i),
+      x = "Daily CH4 Emissions",
+      y = "Count"
+    ) +
+    theme_minimal() +
+    theme(legend.position = "none")
+
+  ch4_plot_list[[i]] <- p
+}
+
+# Redraw plots from ch4_plot_list in 5 pages (4 plots per page)
+grid.newpage()
+grid.draw(arrangeGrob(grobs = ch4_plot_list[1:4], ncol = 2, nrow = 2))
+grid.newpage()
+grid.draw(arrangeGrob(grobs = ch4_plot_list[5:8], ncol = 2, nrow = 2))
+grid.newpage()
+grid.draw(arrangeGrob(grobs = ch4_plot_list[9:12], ncol = 2, nrow = 2))
+grid.newpage()
+grid.draw(arrangeGrob(grobs = ch4_plot_list[13:16], ncol = 2, nrow = 2))
+
+```
+
+
+Comparison between PAC co2 and yco2 x fi 
+```{r}
+# This is a check to see if selecting for bw affects the full population
+x <- testing_mating_func$co2.p.x
+y <- testing_mating_func$co2.p
+
+df <- data.frame(
+  value = c(x, y),
+  group = c(rep("X", length(x)), rep("Y", length(y)))
+)
+
+# Plot overlapping histograms with relabeled legend
+ggplot(df, aes(x = value, fill = group)) +
+  geom_histogram(position = "identity", alpha = 0.5, bins = 30, color = "black") +
+  scale_fill_manual(
+    values = c("X" = "skyblue", "Y" = "salmon"),
+    labels = c("X" = "yco2 x fi", "Y" = "PAC co2"),
+    name = "Generation"
+  ) +
+  labs(title = "Comparison of daily co2 phenotypes i.) yco2 x fi and ii.) PAC co2") +
+  theme_minimal()
+```
+
+tbv correlations
+```{r}
+cor.test.tbv <- testing_mating_func[,c(16:21)]
+
+cor_matrix.tbv <- cor(cor.test.tbv, use = "complete.obs", method = "pearson")
+
+corrplot(cor_matrix.tbv,
+         method = "color",         # colored boxes
+         type = "upper",           # show only upper triangle
+         addCoef.col = "black",    # add correlation coefficients in black
+         tl.col = "black",         # color of variable labels
+         tl.srt = 45,              # rotate labels
+         number.cex = 0.7)         # size of the correlation numbers
+
+sapply(cor.test.tbv, sd, na.rm = TRUE)
+```
+
+Correlation Plots
+```{r}
+cor.test <- full_sim_2[,c(22:29)]
+
+cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
+
+corrplot(cor_matrix,
+         method = "color",         # colored boxes
+         type = "upper",           # show only upper triangle
+         addCoef.col = "black",    # add correlation coefficients in black
+         tl.col = "black",         # color of variable labels
+         tl.srt = 45,              # rotate labels
+         number.cex = 0.7)         # size of the correlation numbers
+```
+
+```{r}
+table(testing_mating_func$yob, testing_mating_func$dam_parity, testing_mating_func$sex)
+```
+```{r}
+dens <- density(full_sim_1$ch4.p.x)
+
+# Convert to data.frame for plotting or inspection
+dens_df <- data.frame(
+  x = dens$x,
+  y = dens$y  # this is already scaled so that area under curve = 1
+)
+
+# Plot
+library(ggplot2)
+ggplot(dens_df, aes(x = x, y = y)) +
+  geom_line(color = "darkblue") +
+  labs(title = "Probability Density of Yield CH4", x = "ych4", y = "Density") +
+  theme_minimal()
+```
+
+
+```{r}
+# Simulated F-distributed data (or replace with your own)
+set.seed(123)
+true_d1 <- 5
+true_d2 <- 10
+sample_data <- full_sim_1$ch4.p.x
+
+# Define grid of candidate d1 and d2 values
+d1_vals <- seq(499, 1000, by = 1)
+d2_vals <- seq(1, 30, by = 1)
+
+# Create a matrix to store log-likelihoods
+loglik_matrix <- matrix(NA, nrow = length(d1_vals), ncol = length(d2_vals),
+                        dimnames = list(paste0("d1_", d1_vals), paste0("d2_", d2_vals)))
+
+# Loop over all combinations and compute log-likelihood
+for (i in seq_along(d1_vals)) {
+  for (j in seq_along(d2_vals)) {
+    d1 <- d1_vals[i]
+    d2 <- d2_vals[j]
+    
+    # Compute log-likelihood for this (d1, d2)
+    loglik <- sum(df(sample_data, df1 = d1, df2 = d2, log = TRUE))
+    
+    # Store result
+    loglik_matrix[i, j] <- loglik
+  }
+}
+
+# Find the maximum log-likelihood and corresponding parameters
+max_idx <- which(loglik_matrix == max(loglik_matrix, na.rm = TRUE), arr.ind = TRUE)
+mle_d1 <- d1_vals[max_idx[1]]
+mle_d2 <- d2_vals[max_idx[2]]
+
+cat("MLE of d1:", mle_d1, "\n")
+cat("MLE of d2:", mle_d2, "\n")
+```
+
+
+```{r}
+# Simulated F-distributed data (or replace with your own)
+set.seed(123)
+true_d1 <- 5
+true_d2 <- 10
+sample_data <- full_sim_2$F.dist.trial.ch4
+
+# Define grid of candidate d1 and d2 values
+d1_vals <- seq(1, 50, by = 1)
+d2_vals <- seq(1, 30, by = 1)
+
+# Create a matrix to store log-likelihoods
+loglik_matrix <- matrix(NA, nrow = length(d1_vals), ncol = length(d2_vals),
+                        dimnames = list(paste0("d1_", d1_vals), paste0("d2_", d2_vals)))
+
+# Loop over all combinations and compute log-likelihood
+for (i in seq_along(d1_vals)) {
+  for (j in seq_along(d2_vals)) {
+    d1 <- d1_vals[i]
+    d2 <- d2_vals[j]
+    
+    # Compute log-likelihood for this (d1, d2)
+    loglik <- sum(dlnorm(sample_data, meanlog = d1, sdlog = d2, log = TRUE))
+    
+    # Store result
+    loglik_matrix[i, j] <- loglik
+  }
+}
+
+# Find the maximum log-likelihood and corresponding parameters
+max_idx <- which(loglik_matrix == max(loglik_matrix, na.rm = TRUE), arr.ind = TRUE)
+mle_d1 <- d1_vals[max_idx[1]]
+mle_d2 <- d2_vals[max_idx[2]]
+
+cat("MLE of d1:", mle_d1, "\n")
+cat("MLE of d2:", mle_d2, "\n")
+```
+
+```{r}
+cor.test <- full_sim_1[yob == 2016,c(22:23,26:29)]
+
+cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
+
+corrplot(cor_matrix,
+         method = "color",         # colored boxes
+         type = "upper",           # show only upper triangle
+         addCoef.col = "black",    # add correlation coefficients in black
+         tl.col = "black",         # color of variable labels
+         tl.srt = 45,              # rotate labels
+         number.cex = 0.7)         # size of the correlation numbers
+```
+
+```{r}
+cor.test <- full_sim_1[yob == 2017,c(22:23,26:29)]
+
+cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
+
+corrplot(cor_matrix,
+         method = "color",         # colored boxes
+         type = "upper",           # show only upper triangle
+         addCoef.col = "black",    # add correlation coefficients in black
+         tl.col = "black",         # color of variable labels
+         tl.srt = 45,              # rotate labels
+         number.cex = 0.7)         # size of the correlation numbers
+```
+
+```{r}
+cor.test <- full_sim_1[yob == 2018,c(22:23,26:29)]
+
+cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
+
+corrplot(cor_matrix,
+         method = "color",         # colored boxes
+         type = "upper",           # show only upper triangle
+         addCoef.col = "black",    # add correlation coefficients in black
+         tl.col = "black",         # color of variable labels
+         tl.srt = 45,              # rotate labels
+         number.cex = 0.7)         # size of the correlation numbers
+```
+```{r}
+cor.test <- full_sim_1[yob == 2019,c(22:23,26:29)]
+
+cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
+
+corrplot(cor_matrix,
+         method = "color",         # colored boxes
+         type = "upper",           # show only upper triangle
+         addCoef.col = "black",    # add correlation coefficients in black
+         tl.col = "black",         # color of variable labels
+         tl.srt = 45,              # rotate labels
+         number.cex = 0.7)         # size of the correlation numbers
+```
+```{r}
+cor.test <- full_sim_1[yob == 2020,c(22:23,26:29)]
+
+cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
+
+corrplot(cor_matrix,
+         method = "color",         # colored boxes
+         type = "upper",           # show only upper triangle
+         addCoef.col = "black",    # add correlation coefficients in black
+         tl.col = "black",         # color of variable labels
+         tl.srt = 45,              # rotate labels
+         number.cex = 0.7)         # size of the correlation numbers
+```
+
+```{r}
+cor.test <- full_sim_1[yob == 2021,c(22:23,26:29)]
+
+cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
+
+corrplot(cor_matrix,
+         method = "color",         # colored boxes
+         type = "upper",           # show only upper triangle
+         addCoef.col = "black",    # add correlation coefficients in black
+         tl.col = "black",         # color of variable labels
+         tl.srt = 45,              # rotate labels
+         number.cex = 0.7)         # size of the correlation numbers
+```
+
+```{r}
+cor.test <- full_sim_1[yob == 2022,c(22:23,26:29)]
+
+cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
+
+corrplot(cor_matrix,
+         method = "color",         # colored boxes
+         type = "upper",           # show only upper triangle
+         addCoef.col = "black",    # add correlation coefficients in black
+         tl.col = "black",         # color of variable labels
+         tl.srt = 45,              # rotate labels
+         number.cex = 0.7)         # size of the correlation numbers
+```
+```{r}
+cor.test <- full_sim_1[yob == 2023,c(22:23,26:29)]
+
+cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
+
+corrplot(cor_matrix,
+         method = "color",         # colored boxes
+         type = "upper",           # show only upper triangle
+         addCoef.col = "black",    # add correlation coefficients in black
+         tl.col = "black",         # color of variable labels
+         tl.srt = 45,              # rotate labels
+         number.cex = 0.7)         # size of the correlation numbers
+```
+
+```{r}
+cor.test <- full_sim_1[litter_size == 1,c(22:23,26:29)]
+
+cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
+
+corrplot(cor_matrix,
+         method = "color",         # colored boxes
+         type = "upper",           # show only upper triangle
+         addCoef.col = "black",    # add correlation coefficients in black
+         tl.col = "black",         # color of variable labels
+         tl.srt = 45,              # rotate labels
+         number.cex = 0.7)         # size of the correlation numbers
+```
+
+```{r}
+cor.test <- full_sim_1[litter_size == 2,c(22:23,26:29)]
+
+cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
+
+corrplot(cor_matrix,
+         method = "color",         # colored boxes
+         type = "upper",           # show only upper triangle
+         addCoef.col = "black",    # add correlation coefficients in black
+         tl.col = "black",         # color of variable labels
+         tl.srt = 45,              # rotate labels
+         number.cex = 0.7)         # size of the correlation numbers
+```
+
+```{r}
+cor.test <- full_sim_1[litter_size == 3,c(22:23,26:29)]
+
+cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
+
+corrplot(cor_matrix,
+         method = "color",         # colored boxes
+         type = "upper",           # show only upper triangle
+         addCoef.col = "black",    # add correlation coefficients in black
+         tl.col = "black",         # color of variable labels
+         tl.srt = 45,              # rotate labels
+         number.cex = 0.7)         # size of the correlation numbers
+```
+
+# Writing .csv files
+
+For all the full sim populations I want to finally create a dummy column at the end and the create .csv files so that these are prepared for Asreml data analysis.
+
+```{r, eval=FALSE}
+# creating full sim data sets in .csv format
+# This includes a "dummy" variable column of all 1s
+for (i in 1:20) {
+  filename <- paste0("full_sim_", i, ".csv")
+  data <- get(paste0("full_sim_", i))
+  data[, dummy := 1]  # add dummy column with value 1
+  fwrite(data, filename)
+}
+```
+
+```{r, eval=FALSE}
+# createing pedigree data sets in .csv format
+# This is if the simulations are in the environment already  
+for (i in 1:20) {
+  filename <- paste0("all_ped_", i, ".csv")
+  data <- get(paste0("full_sim_", i))[, 1:3, with = FALSE]  # select first 3 columns
+  fwrite(data, filename)
+}
+```
+
+```{r, eval=FALSE}
+# upload sln for bw
+for (i in 1:1) {
+  path <- paste0("univariate_sln/", "bw_sim_", i, ".sln")
+
+  df <- read.table(path,
+                   header = TRUE,        # many .sln files include a header row
+                   fill = TRUE,          # pad short rows
+                   stringsAsFactors = FALSE)
+
+  assign(sprintf("bw_sim_%d", i), df)
+}
+```
+
+```{r, eval=FALSE}
+for (i in 1:1) {
+  path <- paste0("univariate_sln/", "bw_sim_", i, ".sln")  # build with paste0
+
+  if (!file.exists(path)) {
+    cand <- list.files("univariate_sln", pattern = "bw.*\\.sln$", ignore.case = TRUE)
+    stop(paste0("Not found: ", path, "\nCandidates:\n", paste(cand, collapse = "\n")))
+  }
+  if (file.access(path, 4) != 0) stop(paste0("No read permission: ", path))
+
+  df <- read.table(path, header = TRUE, fill = TRUE, stringsAsFactors = FALSE)
+  assign(paste0("bw_sim_", i), df)
+}
+```
+
