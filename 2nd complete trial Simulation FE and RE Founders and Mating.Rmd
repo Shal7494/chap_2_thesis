@@ -11,7 +11,7 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r, eval = FALSE}
+```{r}
 # Packages
 packageList = c("ggplot2",
                 "gridExtra",
@@ -32,8 +32,10 @@ packageList = c("ggplot2",
                 "grid"
                 )
 # install.packages(c(packageList)) #don't uncode unless you want to install 
-# packages, also hope you miss me cause I am saving you soo much work installing 
-# packages...Nic
+# Install only packages that are not already installed
+# new.packages <- packageList[!(packageList %in% installed.packages()[,"Package"])]
+#if(length(new.packages)) install.packages(new.packages)
+
 lapply(packageList, require, character.only = TRUE)
 ```
 
@@ -343,7 +345,7 @@ f1_fnum <- 1500
 f1_mnum <- 60
 
 # number of founder generation simulations
-fsim_num <- 20
+fsimnum <- 1
 ```
 
 
@@ -913,18 +915,9 @@ for (i in seq_along(seed_list)) {
 ```
 
 
+# Mating function
 
 
-Working for mating function 
-
-We will use 
-
-If we were to have 6 years of reproduction and have 1500 offspring born each season with a survival rate of 0.8, we will have 9520 animals created in the simulation and 7616 animals surviving by the end of the simulation.
-
-
-
-
-Mating function
 ```{r}
 
 
@@ -1496,7 +1489,7 @@ mate_founders <- function(
 ```{r}
 set.seed(123)
 
-for (i in 1:20) {
+for (i in 1:fsimnum) {
   founder <- get(paste0("founder_", i))
   
   assign(paste0("full_sim_", i),
@@ -1624,465 +1617,7 @@ for (i in 1:20) {
 ```
 
 
-# Simulation result demographics 
 
-Body Weights
-```{r}
-# This is a check to see if selecting for bw affects the full population
-x <- full_sim_1$bw.p
-y <- founder_1$bw.p
-
-df <- data.frame(
-  value = c(x, y),
-  group = c(rep("X", length(x)), rep("Y", length(y)))
-)
-
-# Plot overlapping histograms with relabeled legend
-ggplot(df, aes(x = value, fill = group)) +
-  geom_histogram(position = "identity", alpha = 0.5, bins = 30, color = "black") +
-  scale_fill_manual(
-    values = c("X" = "gold2", "Y" = "#800020"),
-    labels = c("X" = "Full Population", "Y" = "Founder Population"),
-    name = "Generation"
-  ) +
-  labs(title = "Comparison of Founder and Full Data Set distributions for body weight (kg)", x = "body weight (kg)", y = "Count") +
-  theme_minimal()
-```
-
-
-```{r}
-# List to store the plots
-plot_list <- list()
-
-# Loop through full_sim_1 to full_sim_20
-for (i in 1:20) {
-  full_sim <- get(paste0("full_sim_", i))
-  
-  # Extract bw.p
-  x <- full_sim$bw.p
-  y <- founder$bw.p
-  
-  df <- data.frame(
-    value = c(x, y),
-    group = c(rep("X", length(x)), rep("Y", length(y)))
-  )
-  
-  p <- ggplot(df, aes(x = value, fill = group)) +
-    geom_histogram(position = "identity", alpha = 0.5, bins = 30, color = "black") +
-    scale_fill_manual(
-      values = c("X" = "gold2", "Y" = "#800020"),
-      labels = c("X" = "Full Population", "Y" = "Founder Population"),
-      name = "Generation"
-    ) +
-    labs(
-      title = paste("Sim", i),
-      x = "Body weight (kg)",
-      y = "Count"
-    ) +
-    theme_minimal() +
-    theme(legend.position = "none")  # Hide legends for all but one
-
-  plot_list[[i]] <- p
-}
-
-# Increase plotting device size (interactive RStudio)
-dev.new(width = 16, height = 12)  # adjust size as needed
-
-
-
-# Redraw plots on new page
-grid.newpage()
-grid.draw(arrangeGrob(grobs = plot_list[1:4], ncol = 2, nrow = 2))
-grid.newpage()
-grid.draw(arrangeGrob(grobs = plot_list[5:8], ncol = 2, nrow = 2))
-grid.newpage()
-grid.draw(arrangeGrob(grobs = plot_list[9:12], ncol = 2, nrow = 2))
-grid.newpage()
-grid.draw(arrangeGrob(grobs = plot_list[13:16], ncol = 2, nrow = 2))
-grid.newpage()
-grid.draw(arrangeGrob(grobs = plot_list[17:20], ncol = 2, nrow = 2))
-```
-
-
-Comparison between PAC ch4 and ych4 x fi 
-```{r}
-# This is a check to see if selecting for bw affects the full population
-x <- testing_mating_func$ch4.p.x
-y <- testing_mating_func$ch4.p
-
-df <- data.frame(
-  value = c(x, y),
-  group = c(rep("X", length(x)), rep("Y", length(y)))
-)
-
-# Plot overlapping histograms with relabeled legend
-ggplot(df, aes(x = value, fill = group)) +
-  geom_histogram(position = "identity", alpha = 0.5, bins = 30, color = "black") +
-  scale_fill_manual(
-    values = c("X" = "skyblue", "Y" = "salmon"),
-    labels = c("X" = "ych4 x fi", "Y" = "PAC ch4"),
-    name = "Generation"
-  ) +
-  labs(title = "Comparison of daily ch4 phenotypes i.) ych4 x fi and ii.) PAC ch4") +
-  theme_minimal()
-```
-
-```{r}
-# List to store the plots
-ch4_plot_list <- list()
-
-# Loop through full_sim_1 to full_sim_20
-for (i in 1:20) {
-  sim_data <- get(paste0("full_sim_", i))
-  
-  # Check columns exist
-  if (!all(c("ch4.p.x", "ch4.p") %in% names(sim_data))) {
-    warning(paste("Missing columns in full_sim_", i))
-    next
-  }
-  
-  x <- sim_data$ch4.p.x
-  y <- sim_data$ch4.p
-  
-  df <- data.frame(
-    value = c(x, y),
-    group = c(rep("X", length(x)), rep("Y", length(y)))
-  )
-  
-  p <- ggplot(df, aes(x = value, fill = group)) +
-    geom_histogram(position = "identity", alpha = 0.5, bins = 30, color = "black") +
-    scale_fill_manual(
-      values = c("X" = "skyblue", "Y" = "salmon"),
-      labels = c("X" = "ych4 x fi", "Y" = "PAC ch4"),
-      name = "Generation"
-    ) +
-    labs(
-      title = paste("Sim", i),
-      x = "Daily CH4 Emissions",
-      y = "Count"
-    ) +
-    theme_minimal() +
-    theme(legend.position = "none")
-
-  ch4_plot_list[[i]] <- p
-}
-
-# Redraw plots from ch4_plot_list in 5 pages (4 plots per page)
-grid.newpage()
-grid.draw(arrangeGrob(grobs = ch4_plot_list[1:4], ncol = 2, nrow = 2))
-grid.newpage()
-grid.draw(arrangeGrob(grobs = ch4_plot_list[5:8], ncol = 2, nrow = 2))
-grid.newpage()
-grid.draw(arrangeGrob(grobs = ch4_plot_list[9:12], ncol = 2, nrow = 2))
-grid.newpage()
-grid.draw(arrangeGrob(grobs = ch4_plot_list[13:16], ncol = 2, nrow = 2))
-
-```
-
-
-Comparison between PAC co2 and yco2 x fi 
-```{r}
-# This is a check to see if selecting for bw affects the full population
-x <- testing_mating_func$co2.p.x
-y <- testing_mating_func$co2.p
-
-df <- data.frame(
-  value = c(x, y),
-  group = c(rep("X", length(x)), rep("Y", length(y)))
-)
-
-# Plot overlapping histograms with relabeled legend
-ggplot(df, aes(x = value, fill = group)) +
-  geom_histogram(position = "identity", alpha = 0.5, bins = 30, color = "black") +
-  scale_fill_manual(
-    values = c("X" = "skyblue", "Y" = "salmon"),
-    labels = c("X" = "yco2 x fi", "Y" = "PAC co2"),
-    name = "Generation"
-  ) +
-  labs(title = "Comparison of daily co2 phenotypes i.) yco2 x fi and ii.) PAC co2") +
-  theme_minimal()
-```
-
-tbv correlations
-```{r}
-cor.test.tbv <- testing_mating_func[,c(16:21)]
-
-cor_matrix.tbv <- cor(cor.test.tbv, use = "complete.obs", method = "pearson")
-
-corrplot(cor_matrix.tbv,
-         method = "color",         # colored boxes
-         type = "upper",           # show only upper triangle
-         addCoef.col = "black",    # add correlation coefficients in black
-         tl.col = "black",         # color of variable labels
-         tl.srt = 45,              # rotate labels
-         number.cex = 0.7)         # size of the correlation numbers
-
-sapply(cor.test.tbv, sd, na.rm = TRUE)
-```
-
-Correlation Plots
-```{r}
-cor.test <- full_sim_2[,c(22:29)]
-
-cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
-
-corrplot(cor_matrix,
-         method = "color",         # colored boxes
-         type = "upper",           # show only upper triangle
-         addCoef.col = "black",    # add correlation coefficients in black
-         tl.col = "black",         # color of variable labels
-         tl.srt = 45,              # rotate labels
-         number.cex = 0.7)         # size of the correlation numbers
-```
-
-```{r}
-table(testing_mating_func$yob, testing_mating_func$dam_parity, testing_mating_func$sex)
-```
-```{r}
-dens <- density(full_sim_1$ch4.p.x)
-
-# Convert to data.frame for plotting or inspection
-dens_df <- data.frame(
-  x = dens$x,
-  y = dens$y  # this is already scaled so that area under curve = 1
-)
-
-# Plot
-library(ggplot2)
-ggplot(dens_df, aes(x = x, y = y)) +
-  geom_line(color = "darkblue") +
-  labs(title = "Probability Density of Yield CH4", x = "ych4", y = "Density") +
-  theme_minimal()
-```
-
-
-```{r}
-# Simulated F-distributed data (or replace with your own)
-set.seed(123)
-true_d1 <- 5
-true_d2 <- 10
-sample_data <- full_sim_1$ch4.p.x
-
-# Define grid of candidate d1 and d2 values
-d1_vals <- seq(499, 1000, by = 1)
-d2_vals <- seq(1, 30, by = 1)
-
-# Create a matrix to store log-likelihoods
-loglik_matrix <- matrix(NA, nrow = length(d1_vals), ncol = length(d2_vals),
-                        dimnames = list(paste0("d1_", d1_vals), paste0("d2_", d2_vals)))
-
-# Loop over all combinations and compute log-likelihood
-for (i in seq_along(d1_vals)) {
-  for (j in seq_along(d2_vals)) {
-    d1 <- d1_vals[i]
-    d2 <- d2_vals[j]
-    
-    # Compute log-likelihood for this (d1, d2)
-    loglik <- sum(df(sample_data, df1 = d1, df2 = d2, log = TRUE))
-    
-    # Store result
-    loglik_matrix[i, j] <- loglik
-  }
-}
-
-# Find the maximum log-likelihood and corresponding parameters
-max_idx <- which(loglik_matrix == max(loglik_matrix, na.rm = TRUE), arr.ind = TRUE)
-mle_d1 <- d1_vals[max_idx[1]]
-mle_d2 <- d2_vals[max_idx[2]]
-
-cat("MLE of d1:", mle_d1, "\n")
-cat("MLE of d2:", mle_d2, "\n")
-```
-
-
-```{r}
-# Simulated F-distributed data (or replace with your own)
-set.seed(123)
-true_d1 <- 5
-true_d2 <- 10
-sample_data <- full_sim_2$F.dist.trial.ch4
-
-# Define grid of candidate d1 and d2 values
-d1_vals <- seq(1, 50, by = 1)
-d2_vals <- seq(1, 30, by = 1)
-
-# Create a matrix to store log-likelihoods
-loglik_matrix <- matrix(NA, nrow = length(d1_vals), ncol = length(d2_vals),
-                        dimnames = list(paste0("d1_", d1_vals), paste0("d2_", d2_vals)))
-
-# Loop over all combinations and compute log-likelihood
-for (i in seq_along(d1_vals)) {
-  for (j in seq_along(d2_vals)) {
-    d1 <- d1_vals[i]
-    d2 <- d2_vals[j]
-    
-    # Compute log-likelihood for this (d1, d2)
-    loglik <- sum(dlnorm(sample_data, meanlog = d1, sdlog = d2, log = TRUE))
-    
-    # Store result
-    loglik_matrix[i, j] <- loglik
-  }
-}
-
-# Find the maximum log-likelihood and corresponding parameters
-max_idx <- which(loglik_matrix == max(loglik_matrix, na.rm = TRUE), arr.ind = TRUE)
-mle_d1 <- d1_vals[max_idx[1]]
-mle_d2 <- d2_vals[max_idx[2]]
-
-cat("MLE of d1:", mle_d1, "\n")
-cat("MLE of d2:", mle_d2, "\n")
-```
-
-```{r}
-cor.test <- full_sim_1[yob == 2016,c(22:23,26:29)]
-
-cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
-
-corrplot(cor_matrix,
-         method = "color",         # colored boxes
-         type = "upper",           # show only upper triangle
-         addCoef.col = "black",    # add correlation coefficients in black
-         tl.col = "black",         # color of variable labels
-         tl.srt = 45,              # rotate labels
-         number.cex = 0.7)         # size of the correlation numbers
-```
-
-```{r}
-cor.test <- full_sim_1[yob == 2017,c(22:23,26:29)]
-
-cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
-
-corrplot(cor_matrix,
-         method = "color",         # colored boxes
-         type = "upper",           # show only upper triangle
-         addCoef.col = "black",    # add correlation coefficients in black
-         tl.col = "black",         # color of variable labels
-         tl.srt = 45,              # rotate labels
-         number.cex = 0.7)         # size of the correlation numbers
-```
-
-```{r}
-cor.test <- full_sim_1[yob == 2018,c(22:23,26:29)]
-
-cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
-
-corrplot(cor_matrix,
-         method = "color",         # colored boxes
-         type = "upper",           # show only upper triangle
-         addCoef.col = "black",    # add correlation coefficients in black
-         tl.col = "black",         # color of variable labels
-         tl.srt = 45,              # rotate labels
-         number.cex = 0.7)         # size of the correlation numbers
-```
-```{r}
-cor.test <- full_sim_1[yob == 2019,c(22:23,26:29)]
-
-cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
-
-corrplot(cor_matrix,
-         method = "color",         # colored boxes
-         type = "upper",           # show only upper triangle
-         addCoef.col = "black",    # add correlation coefficients in black
-         tl.col = "black",         # color of variable labels
-         tl.srt = 45,              # rotate labels
-         number.cex = 0.7)         # size of the correlation numbers
-```
-```{r}
-cor.test <- full_sim_1[yob == 2020,c(22:23,26:29)]
-
-cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
-
-corrplot(cor_matrix,
-         method = "color",         # colored boxes
-         type = "upper",           # show only upper triangle
-         addCoef.col = "black",    # add correlation coefficients in black
-         tl.col = "black",         # color of variable labels
-         tl.srt = 45,              # rotate labels
-         number.cex = 0.7)         # size of the correlation numbers
-```
-
-```{r}
-cor.test <- full_sim_1[yob == 2021,c(22:23,26:29)]
-
-cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
-
-corrplot(cor_matrix,
-         method = "color",         # colored boxes
-         type = "upper",           # show only upper triangle
-         addCoef.col = "black",    # add correlation coefficients in black
-         tl.col = "black",         # color of variable labels
-         tl.srt = 45,              # rotate labels
-         number.cex = 0.7)         # size of the correlation numbers
-```
-
-```{r}
-cor.test <- full_sim_1[yob == 2022,c(22:23,26:29)]
-
-cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
-
-corrplot(cor_matrix,
-         method = "color",         # colored boxes
-         type = "upper",           # show only upper triangle
-         addCoef.col = "black",    # add correlation coefficients in black
-         tl.col = "black",         # color of variable labels
-         tl.srt = 45,              # rotate labels
-         number.cex = 0.7)         # size of the correlation numbers
-```
-```{r}
-cor.test <- full_sim_1[yob == 2023,c(22:23,26:29)]
-
-cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
-
-corrplot(cor_matrix,
-         method = "color",         # colored boxes
-         type = "upper",           # show only upper triangle
-         addCoef.col = "black",    # add correlation coefficients in black
-         tl.col = "black",         # color of variable labels
-         tl.srt = 45,              # rotate labels
-         number.cex = 0.7)         # size of the correlation numbers
-```
-
-```{r}
-cor.test <- full_sim_1[litter_size == 1,c(22:23,26:29)]
-
-cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
-
-corrplot(cor_matrix,
-         method = "color",         # colored boxes
-         type = "upper",           # show only upper triangle
-         addCoef.col = "black",    # add correlation coefficients in black
-         tl.col = "black",         # color of variable labels
-         tl.srt = 45,              # rotate labels
-         number.cex = 0.7)         # size of the correlation numbers
-```
-
-```{r}
-cor.test <- full_sim_1[litter_size == 2,c(22:23,26:29)]
-
-cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
-
-corrplot(cor_matrix,
-         method = "color",         # colored boxes
-         type = "upper",           # show only upper triangle
-         addCoef.col = "black",    # add correlation coefficients in black
-         tl.col = "black",         # color of variable labels
-         tl.srt = 45,              # rotate labels
-         number.cex = 0.7)         # size of the correlation numbers
-```
-
-```{r}
-cor.test <- full_sim_1[litter_size == 3,c(22:23,26:29)]
-
-cor_matrix <- cor(cor.test, use = "complete.obs", method = "pearson")
-
-corrplot(cor_matrix,
-         method = "color",         # colored boxes
-         type = "upper",           # show only upper triangle
-         addCoef.col = "black",    # add correlation coefficients in black
-         tl.col = "black",         # color of variable labels
-         tl.srt = 45,              # rotate labels
-         number.cex = 0.7)         # size of the correlation numbers
-```
 
 # Writing .csv files
 
