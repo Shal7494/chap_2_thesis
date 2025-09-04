@@ -31,12 +31,11 @@ packageList = c("ggplot2",
                 "corrplot",
                 "grid"
                 )
-# install.packages(c(packageList)) #don't uncode unless you want to install 
-# Install only packages that are not already installed
-# new.packages <- packageList[!(packageList %in% installed.packages()[,"Package"])]
-#if(length(new.packages)) install.packages(new.packages)
 
-lapply(packageList, require, character.only = TRUE)
+# Install only packages that are not already installed
+new.packages <- packageList[!(packageList %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+
 ```
 
 # Custom Functions
