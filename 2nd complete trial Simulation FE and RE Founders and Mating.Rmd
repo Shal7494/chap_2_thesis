@@ -36,7 +36,6 @@ packageList = c("ggplot2",
 # new.packages <- packageList[!(packageList %in% installed.packages()[,"Package"])]
 #if(length(new.packages)) install.packages(new.packages)
 
-# packages...Nic
 lapply(packageList, require, character.only = TRUE)
 ```
 
